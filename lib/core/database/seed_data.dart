@@ -3,10 +3,12 @@ import '../../features/stock/data/models/stock_model.dart';
 import '../../features/stock/data/repositories/producto_repository.dart';
 import '../../features/stock/data/repositories/categoria_repository.dart';
 import '../../features/stock/data/repositories/stock_repository.dart';
+import '../../features/clientes/data/models/cliente_model.dart';
 import '../../features/clientes/data/repositories/cliente_repository.dart';
 import '../../features/obras/data/models/obra_model.dart';
 import '../../features/obras/data/repositories/obra_repository.dart';
 import '../../features/remitos/data/repositories/remito_repository.dart';
+import '../../features/facturas/data/repositories/factura_repository.dart';
 import '../database/database_helper.dart';
 
 /// Clase para cargar datos de prueba en la base de datos
@@ -20,6 +22,7 @@ class SeedData {
   final ClienteRepository _clienteRepo = ClienteRepository();
   final ObraRepository _obraRepo = ObraRepository();
   final RemitoRepository _remitoRepo = RemitoRepository();
+  final FacturaRepository _facturaRepo = FacturaRepository();
 
   /// Carga todos los datos de prueba
   ///
@@ -57,6 +60,7 @@ class SeedData {
       await _cargarProveedoresPrueba();
       await _cargarAcopiosPrueba();
       await _cargarRemitoDemo();
+      await _cargarFacturaDemo();
 
 
 
@@ -833,6 +837,84 @@ class SeedData {
       print('      ✅ Remito de ejemplo generado\n');
     } catch (e) {
       print('      ❌ Error al generar remito demo: $e\n');
+    }
+  }
+
+  Future<void> _cargarFacturaDemo() async {
+    print('   🧾 Generando factura de ejemplo...');
+
+    try {
+      final totalFacturas = await _facturaRepo.contar();
+      if (totalFacturas > 0) {
+        print('      ℹ️  Ya existen facturas, se omite el demo.\n');
+        return;
+      }
+
+      final clientes = await _clienteRepo.obtenerTodos();
+      final productos = await _productoRepo.obtenerTodos();
+
+      final cliente = clientes.firstWhere(
+        (c) => c.id != null,
+        orElse: () => clientes.isNotEmpty ? clientes.first : ClienteModel(
+          codigo: 'TEMP',
+          razonSocial: 'Cliente temporal',
+        ),
+      );
+
+      if (cliente.id == null) {
+        print('      ⚠️  Cliente demo sin ID válido, no se crea factura.\n');
+        return;
+      }
+
+      final obras = await _obraRepo.obtenerPorCliente(cliente.id!);
+      final productosValidos = productos.where((p) => p.id != null).take(3).toList();
+
+      if (productosValidos.isEmpty) {
+        print('      ⚠️  No hay productos disponibles para factura demo.\n');
+        return;
+      }
+
+      final items = <Map<String, dynamic>>[];
+      for (var i = 0; i < productosValidos.length; i++) {
+        final producto = productosValidos[i];
+        final cantidad = 3 + i;
+        final precio = producto.precioSinIva ?? (12000 + (i * 2500));
+
+        items.add({
+          'productoId': producto.id!,
+          'descripcion': producto.descripcion ?? producto.nombre,
+          'cantidad': cantidad.toDouble(),
+          'precioUnitario': precio,
+          'ivaPorcentaje': 21,
+        });
+      }
+
+      final fechaEmision = DateTime.now();
+      final facturaId = await _facturaRepo.crearFactura(
+        clienteId: cliente.id!,
+        obraId: obras.isNotEmpty ? obras.first.id : null,
+        tipo: 'B',
+        fechaEmision: fechaEmision,
+        fechaVencimiento: fechaEmision.add(const Duration(days: 15)),
+        condicionPago: 'Cuenta corriente 15 días',
+        observaciones: 'Factura demo generada automáticamente',
+        items: items,
+      );
+
+      final factura = await _facturaRepo.obtenerPorId(facturaId);
+      if (factura != null) {
+        await _facturaRepo.registrarPago(
+          facturaId: facturaId,
+          monto: factura.total / 2,
+          fecha: fechaEmision.add(const Duration(days: 3)),
+          metodo: 'Transferencia',
+          referencia: 'DEMO-COBRO-001',
+        );
+      }
+
+      print('      ✅ Factura de ejemplo generada\n');
+    } catch (e) {
+      print('      ❌ Error al generar factura demo: $e\n');
     }
   }
 }

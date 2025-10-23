@@ -28,7 +28,7 @@ class DatabaseHelper {
   // ========================================
 
   static const String _databaseName = 'syg_materiales.db';
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
 
   // La base de datos en sí
   static Database? _database;
@@ -92,6 +92,9 @@ class DatabaseHelper {
     //Remitos
     await _createRemitosTable(db);
     await _createRemitoItemsTable(db);
+    await _createFacturasTable(db);
+    await _createFacturaItemsTable(db);
+    await _createPagosTable(db);
 
     // Carga datos iniciales
     await _seedCategorias(db);
@@ -114,6 +117,13 @@ class DatabaseHelper {
       await _createRemitosTable(db);
       await _createRemitoItemsTable(db);
       print('✅ Migración v3: Remitos agregados');
+    }
+
+    if (oldVersion < 4) {
+      await _createFacturasTable(db);
+      await _createFacturaItemsTable(db);
+      await _createPagosTable(db);
+      print('✅ Migración v4: Facturación y pagos agregados');
     }
   }
 
@@ -144,6 +154,90 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_usuarios_estado ON usuarios(estado)');
 
     print('  ✓ Tabla usuarios creada');
+  }
+
+  /// Tabla FACTURAS
+  Future<void> _createFacturasTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE facturas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero TEXT UNIQUE NOT NULL,
+        tipo TEXT DEFAULT 'B',
+        cliente_id INTEGER NOT NULL,
+        obra_id INTEGER,
+        fecha_emision TEXT NOT NULL,
+        fecha_vencimiento TEXT,
+        estado TEXT DEFAULT 'borrador',
+        condicion_pago TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        impuestos REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        observaciones TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT,
+        FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+        FOREIGN KEY (obra_id) REFERENCES obras(id)
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_facturas_numero ON facturas(numero)');
+    await db.execute(
+      'CREATE INDEX idx_facturas_cliente ON facturas(cliente_id)',
+    );
+    await db.execute('CREATE INDEX idx_facturas_estado ON facturas(estado)');
+
+    print('  ✓ Tabla facturas creada');
+  }
+
+  /// Tabla FACTURA ITEMS
+  Future<void> _createFacturaItemsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE factura_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factura_id INTEGER NOT NULL,
+        producto_id INTEGER NOT NULL,
+        descripcion TEXT,
+        cantidad REAL NOT NULL,
+        precio_unitario REAL NOT NULL,
+        subtotal REAL NOT NULL,
+        iva REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL,
+        remito_item_id INTEGER,
+        FOREIGN KEY (factura_id) REFERENCES facturas(id) ON DELETE CASCADE,
+        FOREIGN KEY (producto_id) REFERENCES productos(id),
+        FOREIGN KEY (remito_item_id) REFERENCES remito_items(id)
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX idx_factura_items_factura ON factura_items(factura_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_factura_items_producto ON factura_items(producto_id)',
+    );
+
+    print('  ✓ Tabla factura_items creada');
+  }
+
+  /// Tabla PAGOS
+  Future<void> _createPagosTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE pagos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factura_id INTEGER NOT NULL,
+        fecha TEXT NOT NULL,
+        metodo TEXT,
+        monto REAL NOT NULL,
+        referencia TEXT,
+        observaciones TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (factura_id) REFERENCES facturas(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_pagos_factura ON pagos(factura_id)');
+
+    print('  ✓ Tabla pagos creada');
   }
 
   /// Tabla CLIENTES
