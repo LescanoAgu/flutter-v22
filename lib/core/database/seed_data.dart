@@ -9,6 +9,8 @@ import '../../features/obras/data/models/obra_model.dart';
 import '../../features/obras/data/repositories/obra_repository.dart';
 import '../../features/remitos/data/repositories/remito_repository.dart';
 import '../../features/facturas/data/repositories/factura_repository.dart';
+import '../../features/contabilidad/data/models/asiento_model.dart';
+import '../../features/contabilidad/data/repositories/contabilidad_repository.dart';
 import '../database/database_helper.dart';
 
 /// Clase para cargar datos de prueba en la base de datos
@@ -23,6 +25,7 @@ class SeedData {
   final ObraRepository _obraRepo = ObraRepository();
   final RemitoRepository _remitoRepo = RemitoRepository();
   final FacturaRepository _facturaRepo = FacturaRepository();
+  final ContabilidadRepository _contabilidadRepo = ContabilidadRepository();
 
   /// Carga todos los datos de prueba
   ///
@@ -61,6 +64,7 @@ class SeedData {
       await _cargarAcopiosPrueba();
       await _cargarRemitoDemo();
       await _cargarFacturaDemo();
+      await _cargarContabilidadDemo();
 
 
 
@@ -915,6 +919,161 @@ class SeedData {
       print('      ✅ Factura de ejemplo generada\n');
     } catch (e) {
       print('      ❌ Error al generar factura demo: $e\n');
+    }
+  }
+
+  Future<void> _cargarContabilidadDemo() async {
+    print('   📚 Configurando contabilidad demo...');
+
+    try {
+      final cuentasExistentes = await _contabilidadRepo.contarCuentas();
+      if (cuentasExistentes == 0) {
+        final cajaId = await _contabilidadRepo.guardarCuenta(
+          codigo: '1.1.1',
+          nombre: 'Caja',
+          tipo: 'activo',
+          descripcion: 'Disponibilidades en efectivo',
+        );
+
+        final bancoId = await _contabilidadRepo.guardarCuenta(
+          codigo: '1.1.2',
+          nombre: 'Banco Cuenta Corriente',
+          tipo: 'activo',
+          descripcion: 'Fondos en entidades bancarias',
+        );
+
+        final clientesId = await _contabilidadRepo.guardarCuenta(
+          codigo: '1.1.3',
+          nombre: 'Clientes',
+          tipo: 'activo',
+          descripcion: 'Créditos por ventas a clientes',
+        );
+
+        final ventasId = await _contabilidadRepo.guardarCuenta(
+          codigo: '4.1.1',
+          nombre: 'Ventas de materiales',
+          tipo: 'ingreso',
+          descripcion: 'Facturación de mercaderías',
+          esImputable: true,
+        );
+
+        final ivaDebitoId = await _contabilidadRepo.guardarCuenta(
+          codigo: '2.1.1',
+          nombre: 'IVA Débito Fiscal',
+          tipo: 'pasivo',
+          descripcion: 'Impuesto al valor agregado por ventas',
+        );
+
+        print('      ✓ Plan de cuentas demo creado (${[
+          cajaId,
+          bancoId,
+          clientesId,
+          ventasId,
+          ivaDebitoId,
+        ].length} cuentas)');
+      } else {
+        print('      ℹ️  Plan de cuentas existente, se reutiliza.');
+      }
+
+      final totalAsientos = await _contabilidadRepo.contarAsientos();
+      if (totalAsientos > 0) {
+        print('      ℹ️  Ya existen asientos contables, se omiten demos.\n');
+        return;
+      }
+
+      final cuentas = await _contabilidadRepo.obtenerCuentas();
+      if (cuentas.isEmpty) {
+        print('      ⚠️  No hay cuentas contables disponibles.\n');
+        return;
+      }
+      int? cuentaClientesId = cuentas.firstWhere(
+        (c) => c.codigo == '1.1.3',
+        orElse: () => cuentas.first,
+      ).id;
+      int? cuentaVentasId = cuentas.firstWhere(
+        (c) => c.codigo == '4.1.1',
+        orElse: () => cuentas.first,
+      ).id;
+      int? cuentaIvaId = cuentas.firstWhere(
+        (c) => c.codigo == '2.1.1',
+        orElse: () => cuentas.first,
+      ).id;
+      int? cuentaCajaId = cuentas.firstWhere(
+        (c) => c.codigo == '1.1.1',
+        orElse: () => cuentas.first,
+      ).id;
+
+      if (cuentaClientesId == null ||
+          cuentaVentasId == null ||
+          cuentaIvaId == null ||
+          cuentaCajaId == null) {
+        print('      ⚠️  No se pudieron resolver las cuentas demo.\n');
+        return;
+      }
+
+      final facturas = await _facturaRepo.obtenerResumen();
+      if (facturas.isEmpty) {
+        print('      ⚠️  No hay factura demo para generar asientos.\n');
+        return;
+      }
+
+      final factura = facturas.first;
+      final facturaCompleta = await _facturaRepo.obtenerPorId(factura.id);
+      if (facturaCompleta == null) {
+        print('      ⚠️  No se encontró la factura demo.\n');
+        return;
+      }
+
+      await _contabilidadRepo.crearAsiento(
+        fecha: facturaCompleta.fechaEmision ?? DateTime.now(),
+        descripcion: 'Registro de factura ${factura.numero}',
+        origenTipo: 'factura',
+        origenId: factura.id,
+        movimientos: [
+          AsientoMovimientoInput(
+            cuentaId: cuentaClientesId,
+            debe: facturaCompleta.total,
+            detalle: 'Cuenta corriente ${factura.numero}',
+          ),
+          AsientoMovimientoInput(
+            cuentaId: cuentaVentasId,
+            haber: facturaCompleta.subtotal,
+            detalle: 'Venta de materiales',
+          ),
+          AsientoMovimientoInput(
+            cuentaId: cuentaIvaId,
+            haber: facturaCompleta.impuestos,
+            detalle: 'IVA Débito Fiscal 21%',
+          ),
+        ],
+      );
+
+      final pagos = await _facturaRepo.obtenerPagos(factura.id);
+      if (pagos.isNotEmpty) {
+        final primerPago = pagos.first;
+        await _contabilidadRepo.crearAsiento(
+          fecha: primerPago.fecha,
+          descripcion: 'Cobro parcial factura ${factura.numero}',
+          origenTipo: 'pago',
+          origenId: primerPago.id,
+          movimientos: [
+            AsientoMovimientoInput(
+              cuentaId: cuentaCajaId,
+              debe: primerPago.monto,
+              detalle: 'Ingreso por cobro',
+            ),
+            AsientoMovimientoInput(
+              cuentaId: cuentaClientesId,
+              haber: primerPago.monto,
+              detalle: 'Aplicación a cuenta corriente',
+            ),
+          ],
+        );
+      }
+
+      print('      ✅ Asientos contables demo generados.\n');
+    } catch (e) {
+      print('      ❌ Error al configurar contabilidad demo: $e\n');
     }
   }
 }

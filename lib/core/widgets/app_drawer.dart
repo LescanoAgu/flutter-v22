@@ -12,6 +12,7 @@ import '../../features/reportes/presentation/pages/reportes_menu_page.dart';
 import '../../features/ordenes_internas/presentation/pages/ordenes_page.dart';
 import '../../features/remitos/presentation/pages/remitos_list_page.dart';
 import '../../features/facturas/presentation/pages/facturas_list_page.dart';
+import '../../features/contabilidad/presentation/pages/contabilidad_dashboard_page.dart';
 
 
 
@@ -191,6 +192,21 @@ class AppDrawer extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const FacturasListPage(),
+                      ),
+                    );
+                  },
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.account_balance,
+                  title: 'Contabilidad',
+                  subtitle: 'Asientos e informes',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ContabilidadDashboardPage(),
                       ),
                     );
                   },

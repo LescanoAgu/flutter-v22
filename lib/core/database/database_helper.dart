@@ -28,7 +28,7 @@ class DatabaseHelper {
   // ========================================
 
   static const String _databaseName = 'syg_materiales.db';
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5;
 
   // La base de datos en sí
   static Database? _database;
@@ -95,6 +95,9 @@ class DatabaseHelper {
     await _createFacturasTable(db);
     await _createFacturaItemsTable(db);
     await _createPagosTable(db);
+    await _createCuentasContablesTable(db);
+    await _createAsientosTable(db);
+    await _createAsientoMovimientosTable(db);
 
     // Carga datos iniciales
     await _seedCategorias(db);
@@ -125,6 +128,80 @@ class DatabaseHelper {
       await _createPagosTable(db);
       print('✅ Migración v4: Facturación y pagos agregados');
     }
+
+    if (oldVersion < 5) {
+      await _createCuentasContablesTable(db);
+      await _createAsientosTable(db);
+      await _createAsientoMovimientosTable(db);
+      print('✅ Migración v5: Plan de cuentas y asientos agregados');
+    }
+  }
+
+  /// Tabla CUENTAS CONTABLES
+  Future<void> _createCuentasContablesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE cuentas_contables (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        descripcion TEXT,
+        es_imputable INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_cuentas_codigo ON cuentas_contables(codigo)');
+    await db.execute('CREATE INDEX idx_cuentas_tipo ON cuentas_contables(tipo)');
+
+    print('  ✓ Tabla cuentas_contables creada');
+  }
+
+  /// Tabla ASIENTOS CONTABLES
+  Future<void> _createAsientosTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE asientos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero TEXT UNIQUE NOT NULL,
+        fecha TEXT NOT NULL,
+        descripcion TEXT,
+        origen_tipo TEXT,
+        origen_id INTEGER,
+        estado TEXT DEFAULT 'registrado',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_asientos_numero ON asientos(numero)');
+    await db.execute('CREATE INDEX idx_asientos_fecha ON asientos(fecha)');
+    await db.execute('CREATE INDEX idx_asientos_origen ON asientos(origen_tipo, origen_id)');
+
+    print('  ✓ Tabla asientos creada');
+  }
+
+  /// Tabla MOVIMIENTOS DE ASIENTO
+  Future<void> _createAsientoMovimientosTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE asiento_movimientos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        asiento_id INTEGER NOT NULL,
+        cuenta_id INTEGER NOT NULL,
+        detalle TEXT,
+        debe REAL NOT NULL DEFAULT 0,
+        haber REAL NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT,
+        FOREIGN KEY (asiento_id) REFERENCES asientos(id) ON DELETE CASCADE,
+        FOREIGN KEY (cuenta_id) REFERENCES cuentas_contables(id)
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_movimientos_asiento ON asiento_movimientos(asiento_id)');
+    await db.execute('CREATE INDEX idx_movimientos_cuenta ON asiento_movimientos(cuenta_id)');
+
+    print('  ✓ Tabla asiento_movimientos creada');
   }
 
   // ========================================
