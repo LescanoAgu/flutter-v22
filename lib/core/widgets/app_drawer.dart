@@ -10,6 +10,9 @@ import '../../features/acopios/presentation/pages/acopios_list_page.dart';
 import '../../features/stock/presentation/pages/consultar_disponibilidad_page.dart';
 import '../../features/reportes/presentation/pages/reportes_menu_page.dart';
 import '../../features/ordenes_internas/presentation/pages/ordenes_page.dart';
+import '../../features/remitos/presentation/pages/remitos_list_page.dart';
+import '../../features/facturas/presentation/pages/facturas_list_page.dart';
+import '../../features/contabilidad/presentation/pages/contabilidad_dashboard_page.dart';
 
 
 
@@ -159,6 +162,51 @@ class AppDrawer extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const OrdenesPage(),
+                      ),
+                    );
+                  },
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.local_shipping,
+                  title: 'Remitos',
+                  subtitle: 'Entregas a clientes',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RemitosListPage(),
+                      ),
+                    );
+                  },
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.receipt_long,
+                  title: 'Facturas',
+                  subtitle: 'Cuentas y cobranzas',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const FacturasListPage(),
+                      ),
+                    );
+                  },
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.account_balance,
+                  title: 'Contabilidad',
+                  subtitle: 'Asientos e informes',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ContabilidadDashboardPage(),
                       ),
                     );
                   },
