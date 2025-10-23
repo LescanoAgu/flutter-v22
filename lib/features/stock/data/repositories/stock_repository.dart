@@ -478,24 +478,45 @@ class StockRepository {
             _tableName,
             {
               'cantidad_disponible': cantidadNueva,
-              'updated_at': DateTime.now().toIso8601String(),
+              'ultima_actualizacion': DateTime.now().toIso8601String(),
             },
             where: 'id = ?',
             whereArgs: [stockId],
           );
 
           // 4. Registrar movimiento
+          final extrasReferencia = <String>[];
+          if (remitoNumero != null && remitoNumero.isNotEmpty) {
+            extrasReferencia.add('Remito $remitoNumero');
+          }
+          if (facturaNumero != null && facturaNumero.isNotEmpty) {
+            extrasReferencia.add('Factura $facturaNumero');
+          }
+          if (facturaFecha != null) {
+            extrasReferencia.add(
+              'Fecha factura: ${facturaFecha.toIso8601String().split('T').first}',
+            );
+          }
+          if (valorizado && montoValorizado != null) {
+            extrasReferencia
+                .add('Valorizado: ${montoValorizado.toStringAsFixed(2)}');
+          }
+
+          final referenciaMovimiento = <String>[
+            if (referencia != null && referencia.isNotEmpty) referencia,
+            ...extrasReferencia,
+          ].join(' · ');
+
           final movimiento = {
             'producto_id': productoId,
             'tipo': tipo.name,
             'cantidad': cantidad,
+            'cantidad_anterior': cantidadActual,
+            'cantidad_posterior': cantidadNueva,
             'motivo': motivo,
-            'referencia': referencia,
-            'remito_numero': remitoNumero,
-            'factura_numero': facturaNumero,
-            'factura_fecha': facturaFecha?.toIso8601String(),
-            'valorizado': valorizado ? 1 : 0,
-            'monto_valorizado': montoValorizado,
+            'referencia': referenciaMovimiento.isNotEmpty
+                ? referenciaMovimiento
+                : null,
             'usuario_id': usuarioId,
             'created_at': DateTime.now().toIso8601String(),
           };
