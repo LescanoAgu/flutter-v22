@@ -3,9 +3,11 @@ import '../../features/stock/data/models/stock_model.dart';
 import '../../features/stock/data/repositories/producto_repository.dart';
 import '../../features/stock/data/repositories/categoria_repository.dart';
 import '../../features/stock/data/repositories/stock_repository.dart';
-import '../../features/clientes/data/models/cliente_model.dart';
-import '../database/database_helper.dart';
+import '../../features/clientes/data/repositories/cliente_repository.dart';
 import '../../features/obras/data/models/obra_model.dart';
+import '../../features/obras/data/repositories/obra_repository.dart';
+import '../../features/remitos/data/repositories/remito_repository.dart';
+import '../database/database_helper.dart';
 
 /// Clase para cargar datos de prueba en la base de datos
 ///
@@ -15,6 +17,9 @@ class SeedData {
   final ProductoRepository _productoRepo = ProductoRepository();
   final CategoriaRepository _categoriaRepo = CategoriaRepository();
   final StockRepository _stockRepo = StockRepository();
+  final ClienteRepository _clienteRepo = ClienteRepository();
+  final ObraRepository _obraRepo = ObraRepository();
+  final RemitoRepository _remitoRepo = RemitoRepository();
 
   /// Carga todos los datos de prueba
   ///
@@ -51,6 +56,7 @@ class SeedData {
       await _cargarObrasPrueba();
       await _cargarProveedoresPrueba();
       await _cargarAcopiosPrueba();
+      await _cargarRemitoDemo();
 
 
 
@@ -774,6 +780,59 @@ class SeedData {
       print('      ✅ ${acopios.length} acopios de ejemplo cargados\n');
     } catch (e) {
       print('      ❌ Error al cargar acopios: $e\n');
+    }
+  }
+
+  Future<void> _cargarRemitoDemo() async {
+    print('   🚚 Generando remito de ejemplo...');
+
+    try {
+      final totalRemitos = await _remitoRepo.contar();
+      if (totalRemitos > 0) {
+        print('      ℹ️  Ya existen remitos, se omite el demo.\n');
+        return;
+      }
+
+      final clientes = await _clienteRepo.obtenerTodos();
+      final productos = await _productoRepo.obtenerTodos();
+
+      if (clientes.isEmpty || productos.isEmpty) {
+        print('      ⚠️  Faltan clientes o productos para generar remito demo.\n');
+        return;
+      }
+
+      final cliente = clientes.first;
+      final List<ObraModel> obrasCliente = cliente.id != null
+          ? await _obraRepo.obtenerPorCliente(cliente.id!)
+          : <ObraModel>[];
+
+      final items = productos.take(2).where((p) => p.id != null).map((producto) {
+        return {
+          'productoId': producto.id!,
+          'cantidad': 5,
+          'unidad': producto.unidadBase,
+          'descripcion': producto.nombre,
+        };
+      }).toList();
+
+      if (items.isEmpty) {
+        print('      ⚠️  No se encontraron productos válidos para el remito demo.\n');
+        return;
+      }
+
+      await _remitoRepo.crearRemito(
+        clienteId: cliente.id!,
+        obraId: obrasCliente.isNotEmpty ? obrasCliente.first.id : null,
+        observaciones: 'Entrega de demostración inicial',
+        transporte: 'Flota interna',
+        chofer: 'Chofer Demo',
+        patente: 'AA123BB',
+        items: items,
+      );
+
+      print('      ✅ Remito de ejemplo generado\n');
+    } catch (e) {
+      print('      ❌ Error al generar remito demo: $e\n');
     }
   }
 }

@@ -28,7 +28,7 @@ class DatabaseHelper {
   // ========================================
 
   static const String _databaseName = 'syg_materiales.db';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
 
   // La base de datos en sí
   static Database? _database;
@@ -89,6 +89,9 @@ class DatabaseHelper {
     //ÓRDENES INTERNAS (v2)
     await _createOrdenesInternasTable(db);
     await _createOrdenItemsTable(db);
+    //Remitos
+    await _createRemitosTable(db);
+    await _createRemitoItemsTable(db);
 
     // Carga datos iniciales
     await _seedCategorias(db);
@@ -105,6 +108,12 @@ class DatabaseHelper {
       await _createOrdenesInternasTable(db);
       await _createOrdenItemsTable(db);
       print('✅ Migración v2: Órdenes Internas agregadas');
+    }
+
+    if (oldVersion < 3) {
+      await _createRemitosTable(db);
+      await _createRemitoItemsTable(db);
+      print('✅ Migración v3: Remitos agregados');
     }
   }
 
@@ -588,6 +597,61 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_orden_items_producto ON orden_items(producto_id)');
 
     print('  ✓ Tabla orden_items creada');
+  }
+
+  /// Tabla REMITOS (cabecera)
+  Future<void> _createRemitosTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE remitos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero TEXT UNIQUE NOT NULL,
+        cliente_id INTEGER NOT NULL,
+        obra_id INTEGER,
+        orden_interna_id INTEGER,
+        fecha_emision TEXT NOT NULL,
+        fecha_entrega TEXT,
+        estado TEXT NOT NULL DEFAULT 'emitido',
+        observaciones TEXT,
+        chofer TEXT,
+        transporte TEXT,
+        patente TEXT,
+        recibido_por TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT,
+        FOREIGN KEY (cliente_id) REFERENCES clientes (id),
+        FOREIGN KEY (obra_id) REFERENCES obras (id),
+        FOREIGN KEY (orden_interna_id) REFERENCES ordenes_internas (id)
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_remitos_cliente ON remitos(cliente_id)');
+    await db.execute('CREATE INDEX idx_remitos_estado ON remitos(estado)');
+    await db.execute('CREATE INDEX idx_remitos_numero ON remitos(numero)');
+
+    print('  ✓ Tabla remitos creada');
+  }
+
+  /// Tabla REMITO_ITEMS (detalle)
+  Future<void> _createRemitoItemsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE remito_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remito_id INTEGER NOT NULL,
+        producto_id INTEGER NOT NULL,
+        cantidad REAL NOT NULL,
+        unidad TEXT,
+        descripcion TEXT,
+        orden_item_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (remito_id) REFERENCES remitos (id) ON DELETE CASCADE,
+        FOREIGN KEY (producto_id) REFERENCES productos (id),
+        FOREIGN KEY (orden_item_id) REFERENCES orden_items (id)
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_remito_items_remito ON remito_items(remito_id)');
+
+    print('  ✓ Tabla remito_items creada');
   }
 
   /// Carga las categorías predefinidas
