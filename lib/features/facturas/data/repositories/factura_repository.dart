@@ -2,10 +2,13 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../../core/database/database_helper.dart';
 import '../models/factura_model.dart';
+import '../../../contabilidad/data/models/asiento_model.dart';
+import '../../../contabilidad/data/repositories/contabilidad_repository.dart';
 
 /// Repositorio para gestión de facturas, items y pagos
 class FacturaRepository {
   final DatabaseHelper _dbHelper = DatabaseHelper();
+  final ContabilidadRepository _contabilidadRepository = ContabilidadRepository();
 
   // ========================================
   // CREACIÓN DE FACTURAS
@@ -28,7 +31,7 @@ class FacturaRepository {
 
     final db = await _dbHelper.database;
 
-    return await db.transaction((txn) async {
+    final facturaId = await db.transaction((txn) async {
       final numero = await _generarNumeroFactura(txn);
       final fecha = fechaEmision ?? DateTime.now();
 
@@ -100,6 +103,13 @@ class FacturaRepository {
 
       return facturaId;
     });
+
+    final facturaGenerada = await obtenerPorId(facturaId);
+    if (facturaGenerada != null) {
+      await _intentarCrearAsientoFactura(facturaGenerada);
+    }
+
+    return facturaId;
   }
 
   Future<String> _generarNumeroFactura(Transaction txn) async {
@@ -219,20 +229,37 @@ class FacturaRepository {
   }) async {
     final db = await _dbHelper.database;
 
-    await db.insert('pagos', {
-      'factura_id': facturaId,
-      'fecha': fecha.toIso8601String(),
-      'metodo': metodo,
-      'monto': monto,
-      'referencia': referencia,
-      'observaciones': observaciones,
-      'created_at': DateTime.now().toIso8601String(),
+    final fechaPago = fecha;
+    late final int pagoId;
+
+    await db.transaction((txn) async {
+      pagoId = await txn.insert('pagos', {
+        'factura_id': facturaId,
+        'fecha': fechaPago.toIso8601String(),
+        'metodo': metodo,
+        'monto': monto,
+        'referencia': referencia,
+        'observaciones': observaciones,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      await _recalcularEstado(txn, facturaId);
     });
 
-    await _recalcularEstado(db, facturaId);
+    final factura = await obtenerPorId(facturaId);
+    if (factura != null) {
+      await _intentarCrearAsientoPago(
+        factura: factura,
+        pagoId: pagoId,
+        fecha: fechaPago,
+        monto: monto,
+        metodo: metodo,
+        referencia: referencia,
+      );
+    }
   }
 
-  Future<void> _recalcularEstado(Database db, int facturaId) async {
+  Future<void> _recalcularEstado(DatabaseExecutor db, int facturaId) async {
     final result = await db.query(
       'facturas',
       columns: ['estado', 'total'],
@@ -296,5 +323,124 @@ class FacturaRepository {
     return (result.first['total'] as int?) ??
         (result.first['total'] as num?)?.toInt() ??
         0;
+  }
+
+  Future<void> _intentarCrearAsientoFactura(FacturaModel factura) async {
+    if (factura.id == null) return;
+    if (factura.total <= 0) return;
+
+    try {
+      final existe = await _contabilidadRepository.existeAsientoPorOrigen(
+        origenTipo: 'factura',
+        origenId: factura.id!,
+      );
+      if (existe) return;
+
+      final cuentaClientes =
+          await _contabilidadRepository.obtenerCuentaPorCodigo('1.1.3');
+      final cuentaVentas =
+          await _contabilidadRepository.obtenerCuentaPorCodigo('4.1.1');
+      final cuentaIva =
+          await _contabilidadRepository.obtenerCuentaPorCodigo('2.1.1');
+
+      if (cuentaClientes?.id == null || cuentaVentas?.id == null) {
+        return;
+      }
+
+      final movimientos = <AsientoMovimientoInput>[
+        AsientoMovimientoInput(
+          cuentaId: cuentaClientes!.id!,
+          debe: factura.total,
+          detalle: 'Factura ${factura.numero}',
+        ),
+        AsientoMovimientoInput(
+          cuentaId: cuentaVentas!.id!,
+          haber: factura.subtotal,
+          detalle: 'Ventas ${factura.numero}',
+        ),
+      ];
+
+      if (factura.impuestos > 0 && cuentaIva?.id != null) {
+        movimientos.add(
+          AsientoMovimientoInput(
+            cuentaId: cuentaIva!.id!,
+            haber: factura.impuestos,
+            detalle: 'IVA débito ${factura.numero}',
+          ),
+        );
+      }
+
+      await _contabilidadRepository.crearAsiento(
+        fecha: factura.fechaEmision,
+        descripcion: 'Registro de factura ${factura.numero}',
+        origenTipo: 'factura',
+        origenId: factura.id!,
+        movimientos: movimientos,
+      );
+    } catch (e) {
+      // Si la contabilidad no está configurada todavía se omite el asiento.
+      // ignore: avoid_print
+      print('⚠️  No se pudo generar asiento para factura ${factura.numero}: $e');
+    }
+  }
+
+  Future<void> _intentarCrearAsientoPago({
+    required FacturaModel factura,
+    required int pagoId,
+    required DateTime fecha,
+    required double monto,
+    String? metodo,
+    String? referencia,
+  }) async {
+    if (monto <= 0) return;
+
+    try {
+      final existe = await _contabilidadRepository.existeAsientoPorOrigen(
+        origenTipo: 'pago',
+        origenId: pagoId,
+      );
+      if (existe) return;
+
+      final cuentaClientes =
+          await _contabilidadRepository.obtenerCuentaPorCodigo('1.1.3');
+      if (cuentaClientes?.id == null) {
+        return;
+      }
+
+      final metodoNormalizado = (metodo ?? '').toLowerCase();
+      final codigoCobro = metodoNormalizado.contains('transfer') ||
+              metodoNormalizado.contains('banco')
+          ? '1.1.2'
+          : '1.1.1';
+
+      final cuentaCobro =
+          await _contabilidadRepository.obtenerCuentaPorCodigo(codigoCobro);
+      if (cuentaCobro?.id == null) {
+        return;
+      }
+
+      await _contabilidadRepository.crearAsiento(
+        fecha: fecha,
+        descripcion:
+            'Cobro ${factura.numero}${referencia != null ? ' · $referencia' : ''}',
+        origenTipo: 'pago',
+        origenId: pagoId,
+        movimientos: [
+          AsientoMovimientoInput(
+            cuentaId: cuentaCobro!.id!,
+            debe: monto,
+            detalle: metodo ?? 'Cobro',
+          ),
+          AsientoMovimientoInput(
+            cuentaId: cuentaClientes!.id!,
+            haber: monto,
+            detalle: 'Aplicado a factura ${factura.numero}',
+          ),
+        ],
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('⚠️  No se pudo generar asiento para pago de factura ${factura.numero}: $e');
+    }
   }
 }

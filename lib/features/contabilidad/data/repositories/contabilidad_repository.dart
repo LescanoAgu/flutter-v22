@@ -93,6 +93,19 @@ class ContabilidadRepository {
     return CuentaContableModel.fromMap(result.first);
   }
 
+  Future<CuentaContableModel?> obtenerCuentaPorCodigo(String codigo) async {
+    final db = await _dbHelper.database;
+    final result = await db.query(
+      'cuentas_contables',
+      where: 'codigo = ?',
+      whereArgs: [codigo],
+      limit: 1,
+    );
+
+    if (result.isEmpty) return null;
+    return CuentaContableModel.fromMap(result.first);
+  }
+
   Future<int> contarAsientos() async {
     final db = await _dbHelper.database;
     final result = await db.rawQuery('SELECT COUNT(*) AS total FROM asientos');
@@ -155,6 +168,22 @@ class ContabilidadRepository {
     final total = (result.first['total'] as int?) ?? (result.first['total'] as num?)?.toInt() ?? 0;
     final siguiente = total + 1;
     return 'AS-${siguiente.toString().padLeft(4, '0')}';
+  }
+
+  Future<bool> existeAsientoPorOrigen({
+    required String origenTipo,
+    required int origenId,
+  }) async {
+    final db = await _dbHelper.database;
+    final result = await db.query(
+      'asientos',
+      columns: ['id'],
+      where: 'origen_tipo = ? AND origen_id = ?',
+      whereArgs: [origenTipo, origenId],
+      limit: 1,
+    );
+
+    return result.isNotEmpty;
   }
 
   Future<List<AsientoResumen>> obtenerAsientos({
