@@ -12,6 +12,9 @@ import 'features/stock/presentation/providers/movimiento_stock_provider.dart';
 import 'features/acopios/presentation/providers/acopio_provider.dart';
 import 'features/acopios/presentation/pages/acopios_list_page.dart';
 import 'features/ordenes_internas/presentation/providers/orden_interna_provider.dart';
+import 'features/remitos/presentation/providers/remito_provider.dart';
+import 'features/facturas/presentation/providers/factura_provider.dart';
+import 'features/contabilidad/presentation/providers/contabilidad_provider.dart';
 
 /// Punto de entrada de la aplicación S&G Materiales
 void main() async {
@@ -58,6 +61,9 @@ class SyGMaterialesApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MovimientoStockProvider()),
         ChangeNotifierProvider(create: (_) => AcopioProvider()),
         ChangeNotifierProvider(create: (_) => OrdenInternaProvider()), // ← NUEVO
+        ChangeNotifierProvider(create: (_) => RemitoProvider()),
+        ChangeNotifierProvider(create: (_) => FacturaProvider()),
+        ChangeNotifierProvider(create: (_) => ContabilidadProvider()),
       ],
       child: MaterialApp(
         title: 'S&G Materiales',
